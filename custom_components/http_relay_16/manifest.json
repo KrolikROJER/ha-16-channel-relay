@@ -1,0 +1,10 @@
+{
+  "domain": "http_relay_16",
+  "name": "HTTP Multi-Channel Relay",
+  "version": "1.0.1",
+  "documentation": "https://github.com/KrolikROJER/ha-16-channel-relay",
+  "issue_tracker": "https://github.com/KrolikROJER/ha-16-channel-relay/issues",
+  "codeowners": ["@KrolikROJER"],
+  "iot_class": "local_polling",
+  "config_flow": true
+}
