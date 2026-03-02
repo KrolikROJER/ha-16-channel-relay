@@ -17,7 +17,7 @@ Custom integration for Ethernet/Web relay boards (4, 8, or 16 channels) controll
 
 ### Installation
 1. Open **HACS** -> Custom repositories.
-2. Add URL: `https://github.com`
+2. Add URL: `https://github.com/KrolikROJER/ha-16-channel-relay`
 3. Category: **Integration**.
 4. Install "HTTP Multi-Channel Relay" and **restart HA**.
 
@@ -36,7 +36,7 @@ Custom integration for Ethernet/Web relay boards (4, 8, or 16 channels) controll
 ### Установка
 1. Откройте **HACS** -> Интеграции.
 2. Нажмите на три точки в углу -> **Пользовательские репозитории**.
-3. Вставьте ссылку: `https://github.com`
+3. Вставьте ссылку: `https://github.com/KrolikROJER/ha-16-channel-relay`
 4. Выберите категорию **Интеграция** и нажмите **Добавить**.
 5. Найдите её в списке, установите и **перезагрузите Home Assistant**.
 
