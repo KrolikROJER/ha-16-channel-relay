@@ -1,8 +1,9 @@
 # HTTP Multi-Channel Relay for Home Assistant
 
-[![hacs_badge](https://img.shields.io)](https://github.com/KrolikROJER/ha-16-channel-relay)
-[![Version](https://img.shields.io)](https://github.com/KrolikROJER/ha-16-channel-relay/blob/main/custom_components/http_relay_16/manifest.json)
-
+[![hacs][hacs-badge]][hacs-url]
+[![release][release-badge]][release-url]
+![downloads][downloads-badge]
+![build][build-badge]
 
 [English](#english) | [Русский](#русский)
 
@@ -61,3 +62,17 @@ Integration for controlling relay modules via HTTP. Optimized for controllers wi
 2. Добавьте URL: `https://github.com/KrolikROJER/ha-16-channel-relay`
 3. Категория: **Интеграция** (Integration).
 4. Установите "HTTP Multi-Channel Relay" и **перезапустите HA**.
+
+---
+
+<!-- ССЫЛКИ-ПЕРЕМЕННЫЕ ДЛЯ БЕЙДЖЕЙ -->
+[hacs-badge]: https://img.shields.io/badge/hacs-default-orange.svg?style=flat-square
+[hacs-url]: https://github.com/hacs/integration
+
+[release-badge]: https://img.shields.io/github/v/release/KrolikROJER/ha-16-channel-relay?style=flat-square
+[release-url]: https://github.com/blob/main/custom_components/http_relay_16/manifest.json
+
+[downloads-badge]: https://img.shields.io/github/downloads/KrolikROJER/ha-16-channel-relay/total?style=flat-square
+[build-badge]: https://img.shields.io/github/actions/workflow/status/KrolikROJER/ha-16-channel-relay/build.yml?branch=main&style=flat-square
+[translations-badge]: https://hosted.weblate.org/widget/mushroom/svg-badge.svg
+[hacs]: https://hacs.xyz
