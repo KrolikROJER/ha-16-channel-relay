@@ -1,7 +1,8 @@
 # HTTP Multi-Channel Relay for Home Assistant
 
 [![hacs_badge](https://img.shields.io)](https://github.com/KrolikROJER/ha-16-channel-relay)
-![Version](https://img.shields.io)
+[![Version](https://img.shields.io)](https://github.com/KrolikROJER/ha-16-channel-relay/blob/main/custom_components/http_relay_16/manifest.json)
+
 
 [English](#english) | [Русский](#русский)
 
