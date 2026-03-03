@@ -1,9 +1,10 @@
 import aiohttp
 import logging
 import re
+from datetime import timedelta
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import CONF_HOST, CONF_NAME
-from .const import DOMAIN, CONF_RELAY_COUNT, CONF_PORT, CONF_PREFIX
+from .const import DOMAIN, CONF_RELAY_COUNT, CONF_PORT, CONF_PREFIX, CONF_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -12,11 +13,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     port = config_entry.data[CONF_PORT]
     count = config_entry.data.get(CONF_RELAY_COUNT, 16)
 
-
     raw_prefix = config_entry.data.get(CONF_PREFIX, "").strip()
     if not raw_prefix:
-        integration_name = config_entry.data.get(CONF_NAME, "relay")
-        prefix = integration_name.replace(" ", "_").lower()
+        prefix = config_entry.data.get(CONF_NAME, "relay").replace(" ", "_").lower()
     else:
         prefix = raw_prefix
 
@@ -50,14 +49,13 @@ class RelaySwitch(SwitchEntity):
             self.async_write_ha_state()
 
     async def _send_command(self, index):
-        str_index = str(index).zfill(2)
-        url = f"http://{self._host}/{self._port}/{str_index}"
+        url = f"http://{self._host}/{self._port}/{str(index).zfill(2)}"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=5) as response:
                     return response.status == 200
         except Exception as e:
-            _LOGGER.error("Ошибка HTTP запроса для %s: %s", self._attr_name, e)
+            _LOGGER.error("Ошибка управления %s: %s", self._attr_name, e)
             return False
 
     async def async_update(self):
@@ -67,14 +65,13 @@ class RelaySwitch(SwitchEntity):
                 async with session.get(url, timeout=5) as response:
                     if response.status == 200:
                         html = await response.text()
-                        matches = re.findall(r'>({2,})', html)
-                        if matches:
-                            full_status = max(matches, key=len)
+                        match = re.search(r'>([01]{2,})', html)
+                        if match:
+                            full_status = match.group(1)
                             status_str = full_status[:self._total_count]
                             if len(status_str) >= self._channel:
-                                new_state = status_str[self._channel - 1] == "1"
-                                if self._state != new_state:
-                                    self._state = new_state
-                                    self.async_write_ha_state()
+                                self._state = status_str[self._channel - 1] == "1"
+                        else:
+                            _LOGGER.debug("Строка состояния не найдена в HTML от %s", self._host)
         except Exception as e:
-            _LOGGER.debug("Статус недоступен для %s: %s", self._attr_name, e)
+            _LOGGER.debug("Ошибка обновления %s: %s", self._attr_name, e)
