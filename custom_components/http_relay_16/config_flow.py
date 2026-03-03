@@ -29,16 +29,15 @@ class Relay16ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 class Relay16OptionsFlowHandler(config_entries.OptionsFlow):
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
-
     async def async_step_init(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        host = self.config_entry.options.get(CONF_HOST, self.config_entry.data.get(CONF_HOST))
-        port = self.config_entry.options.get(CONF_PORT, self.config_entry.data.get(CONF_PORT))
-        scan = self.config_entry.options.get(CONF_SCAN_INTERVAL, self.config_entry.data.get(CONF_SCAN_INTERVAL, 30))
+        options = self.config_entry.options
+        data = self.config_entry.data
+        host = options.get(CONF_HOST, data.get(CONF_HOST))
+        port = options.get(CONF_PORT, data.get(CONF_PORT))
+        scan = options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, 30))
 
         return self.async_show_form(
             step_id="init",

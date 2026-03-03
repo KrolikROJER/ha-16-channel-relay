@@ -1,6 +1,7 @@
 import aiohttp
 import logging
 import re
+import asyncio
 from datetime import timedelta
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import CONF_HOST, CONF_NAME
@@ -15,7 +16,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     scan_interval = config_entry.options.get(CONF_SCAN_INTERVAL, config_entry.data.get(CONF_SCAN_INTERVAL, 30))
 
     count = config_entry.data.get(CONF_RELAY_COUNT, 16)
-
+    
     raw_prefix = config_entry.data.get(CONF_PREFIX, "").strip()
     prefix = raw_prefix if raw_prefix else config_entry.data.get(CONF_NAME, "relay").replace(" ", "_").lower()
 
@@ -42,12 +43,17 @@ class RelayCoordinator(DataUpdateCoordinator):
                 async with session.get(url, timeout=5) as response:
                     if response.status == 200:
                         html = await response.text()
-                        match = re.search(r'>({2,})', html)
+                        clean_html = html.replace('\n', '').replace('\r', '').strip()
+                        match = re.search(r'>([01]{' + str(self.count) + r',})', clean_html)
+                        if not match:
+                            match = re.search(r'>([01]+)', clean_html)
                         if match:
-                            return match.group(1)[:self.count]
+                            status_str = match.group(1)[:self.count]
+                            return status_str
         except Exception as e:
-            _LOGGER.debug("Update error for %s: %s", self.host, e)
-        return None
+            _LOGGER.error("Update failed for %s: %s", self.host, e)
+
+        raise Exception("Relay unreachable")
 
 class RelaySwitch(CoordinatorEntity, SwitchEntity):
     def __init__(self, coordinator, channel, prefix):
@@ -72,11 +78,13 @@ class RelaySwitch(CoordinatorEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs):
         index = (self._channel * 2) - 1
         if await self._send_command(index):
+            await asyncio.sleep(0.5)
             await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
         index = (self._channel - 1) * 2
         if await self._send_command(index):
+            await asyncio.sleep(0.5)
             await self.coordinator.async_request_refresh()
 
     async def _send_command(self, index):
