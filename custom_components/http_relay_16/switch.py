@@ -18,8 +18,10 @@ def retry_api(func):
         last_ex = None
 
         if func.__name__ == "send_command":
-            context = f"для канала {args[0]}"
-            target_url = f"http://{self.host}/{self.port}/{str(args[0]).zfill(2)}"
+            idx = args[0]
+            ch_num = (idx // 2) + 1 if idx % 2 == 0 else (idx + 1) // 2
+            context = f"для канала {ch_num}"
+            target_url = f"http://{self.host}/{self.port}/{str(idx).zfill(2)}"
         else:
             context = "для запроса статуса"
             target_url = f"http://{self.host}/{self.port}/99"
@@ -82,8 +84,10 @@ class RelayCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=scan_interval),
         )
         self.host, self.port, self.count = host, port, count
-        self.healthcheck, self.last_success = "Unknown", "Never"
-        self.last_error, self.last_error_time = "None", "Never"
+        self.healthcheck = "Unknown"
+        self.last_success = "Never"
+        self.last_error = "None"
+        self.last_error_time = "Never"
 
     @retry_api
     async def _async_update_data(self):
@@ -92,9 +96,16 @@ class RelayCoordinator(DataUpdateCoordinator):
             async with session.get(url, timeout=5) as response:
                 response.raise_for_status()
                 html = await response.text()
-                match = re.search(r'>({' + str(self.count) + r',})', html.replace('\n',''))
-                if match: return match.group(1)[:self.count]
-                raise Exception("Неверный формат ответа")
+                clean_html = html.replace('\n', '').replace('\r', '').strip()
+                match = re.search(r'>({' + str(self.count) + r',})', clean_html)
+
+                if not match:
+                    match = re.search(r'>(+)', clean_html)
+
+                if match:
+                    return match.group(1)[:self.count]
+
+                raise Exception("Статус не найден в ответе устройства")
 
     @retry_api
     async def send_command(self, idx):
@@ -106,12 +117,12 @@ class RelayCoordinator(DataUpdateCoordinator):
 
     async def turn_all(self, state: bool):
         if not self.data: return
-        target = "1" if state else "0"
+        target_val = "1" if state else "0"
         for i in range(1, self.count + 1):
-            if self.data[i-1] != target:
+            if self.data[i-1] != target_val:
                 idx = (i * 2) - 1 if state else (i - 1) * 2
                 await self.send_command(idx)
-                await asyncio.sleep(0.15) # Чуть ускорил интервал
+                await asyncio.sleep(0.15) 
         await self.async_request_refresh()
 
 class RelaySwitch(CoordinatorEntity, SwitchEntity):
@@ -129,24 +140,22 @@ class RelaySwitch(CoordinatorEntity, SwitchEntity):
         }
 
     @property
-    def extra_state_attributes(self):
-        return {
-            "healthcheck": self.coordinator.healthcheck,
-            "last_success": self.coordinator.last_success,
-            "last_error": self.coordinator.last_error,
-            "last_error_time": self.coordinator.last_error_time,
-        }
-
-    @property
     def is_on(self):
-        return self.coordinator.data[self._channel - 1] == "1" if self.coordinator.data else False
+        if self.coordinator.data and len(self.coordinator.data) >= self._channel:
+            return self.coordinator.data[self._channel - 1] == "1"
+
+        return False
 
     async def async_turn_on(self, **kwargs):
-        if await self.coordinator.send_command((self._channel * 2) - 1):
+        index = (self._channel * 2) - 1
+
+        if await self.coordinator.send_command(index):
             await asyncio.sleep(0.5)
             await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
-        if await self.coordinator.send_command((self._channel - 1) * 2):
+        index = (self._channel - 1) * 2
+
+        if await self.coordinator.send_command(index):
             await asyncio.sleep(0.5)
             await self.coordinator.async_request_refresh()
