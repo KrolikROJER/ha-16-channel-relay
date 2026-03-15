@@ -45,19 +45,13 @@ def retry_api(func):
     return wrapper
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    host = config_entry.options.get(CONF_HOST, config_entry.data.get(CONF_HOST))
-    port = config_entry.options.get(CONF_PORT, config_entry.data.get(CONF_PORT))
-    scan_interval = config_entry.options.get(CONF_SCAN_INTERVAL, config_entry.data.get(CONF_SCAN_INTERVAL, 30))
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     count = config_entry.data.get(CONF_RELAY_COUNT, 16)
     
     raw_prefix = config_entry.data.get(CONF_PREFIX, "").strip()
     prefix = raw_prefix if raw_prefix else config_entry.data.get(CONF_NAME, "relay").replace(" ", "_").lower()
 
-    coordinator = RelayCoordinator(hass, host, port, count, scan_interval)
-    await coordinator.async_config_entry_first_refresh()
-
-    hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator
     entities = [RelaySwitch(coordinator, i, prefix) for i in range(1, count + 1)]
     async_add_entities(entities)
 
@@ -101,7 +95,7 @@ class RelayCoordinator(DataUpdateCoordinator):
 
                 if not match:
                     match = re.search(r'>(+)', clean_html)
-
+                
                 if match:
                     return match.group(1)[:self.count]
 
@@ -131,7 +125,7 @@ class RelaySwitch(CoordinatorEntity, SwitchEntity):
         self._channel = channel
         self._attr_name = f"{prefix.replace('_', ' ').capitalize()} {channel}"
         self._attr_unique_id = f"relay_{prefix}_{channel}"
-
+        
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.coordinator.host)},
             "name": f"Relay Controller ({self.coordinator.host})",
