@@ -16,7 +16,7 @@ def retry_api(func):
     async def wrapper(self, *args, **kwargs):
         delays = [0.5, 1.0, 3.0]
         last_ex = None
-
+        
         if func.__name__ == "send_command":
             idx = args[0]
             ch_num = (idx // 2) + 1 if idx % 2 == 0 else (idx + 1) // 2
@@ -48,7 +48,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     count = config_entry.data.get(CONF_RELAY_COUNT, 16)
-    
     raw_prefix = config_entry.data.get(CONF_PREFIX, "").strip()
     prefix = raw_prefix if raw_prefix else config_entry.data.get(CONF_NAME, "relay").replace(" ", "_").lower()
 
@@ -78,10 +77,8 @@ class RelayCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=scan_interval),
         )
         self.host, self.port, self.count = host, port, count
-        self.healthcheck = "Unknown"
-        self.last_success = "Never"
-        self.last_error = "None"
-        self.last_error_time = "Never"
+        self.healthcheck, self.last_success = "Unknown", "Never"
+        self.last_error, self.last_error_time = "None", "Never"
 
     @retry_api
     async def _async_update_data(self):
@@ -92,14 +89,9 @@ class RelayCoordinator(DataUpdateCoordinator):
                 html = await response.text()
                 clean_html = html.replace('\n', '').replace('\r', '').strip()
                 match = re.search(r'>({' + str(self.count) + r',})', clean_html)
-
-                if not match:
-                    match = re.search(r'>(+)', clean_html)
-                
-                if match:
-                    return match.group(1)[:self.count]
-
-                raise Exception("Статус не найден в ответе устройства")
+                if not match: match = re.search(r'>(+)', clean_html)
+                if match: return match.group(1)[:self.count]
+                raise Exception("Status pattern not found")
 
     @retry_api
     async def send_command(self, idx):
@@ -111,9 +103,9 @@ class RelayCoordinator(DataUpdateCoordinator):
 
     async def turn_all(self, state: bool):
         if not self.data: return
-        target_val = "1" if state else "0"
+        target = "1" if state else "0"
         for i in range(1, self.count + 1):
-            if self.data[i-1] != target_val:
+            if self.data[i-1] != target:
                 idx = (i * 2) - 1 if state else (i - 1) * 2
                 await self.send_command(idx)
                 await asyncio.sleep(0.15) 
@@ -125,7 +117,7 @@ class RelaySwitch(CoordinatorEntity, SwitchEntity):
         self._channel = channel
         self._attr_name = f"{prefix.replace('_', ' ').capitalize()} {channel}"
         self._attr_unique_id = f"relay_{prefix}_{channel}"
-        
+
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.coordinator.host)},
             "name": f"Relay Controller ({self.coordinator.host})",
@@ -141,15 +133,11 @@ class RelaySwitch(CoordinatorEntity, SwitchEntity):
         return False
 
     async def async_turn_on(self, **kwargs):
-        index = (self._channel * 2) - 1
-
-        if await self.coordinator.send_command(index):
+        if await self.coordinator.send_command((self._channel * 2) - 1):
             await asyncio.sleep(0.5)
             await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
-        index = (self._channel - 1) * 2
-
-        if await self.coordinator.send_command(index):
+        if await self.coordinator.send_command((self._channel - 1) * 2):
             await asyncio.sleep(0.5)
             await self.coordinator.async_request_refresh()
