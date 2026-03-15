@@ -1,7 +1,8 @@
 import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from .const import DOMAIN, CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL, CONF_RELAY_COUNT
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTERVAL
+from .const import DOMAIN, CONF_RELAY_COUNT
 
 _LOGGER = logging.getLogger(__name__)
 
