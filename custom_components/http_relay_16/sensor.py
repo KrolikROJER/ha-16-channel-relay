@@ -1,6 +1,10 @@
+import logging
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
@@ -20,8 +24,9 @@ class RelayDiagnosticsSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = {
             "identifiers": {(DOMAIN, coordinator.host)},
         }
-        self._attr_entity_category = "diagnostic"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self):
-        return getattr(self.coordinator, self._field, "Unknown")
+        val = getattr(self.coordinator, self._field, "Unknown")
+        return val if val is not None else "Unknown"

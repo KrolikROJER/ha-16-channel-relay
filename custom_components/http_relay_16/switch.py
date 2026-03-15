@@ -82,14 +82,13 @@ class RelayCoordinator(DataUpdateCoordinator):
                 response.raise_for_status()
                 html = await response.text()
                 clean_html = html.replace('\n', '').replace('\r', '').strip()
-
-                match = re.search(r'>({' + str(self.count) + r',})', clean_html)
+                
+                match = re.search(r'>([01]{' + str(self.count) + r',})', clean_html)
                 if not match:
-                    match = re.search(r'>(+)', clean_html)
+                    match = re.search(r'>([01]+)', clean_html)
                 if match:
                     return match.group(1)[:self.count]
-
-                raise Exception("Статус не найден в ответе (RegEx mismatch)")
+                raise Exception("Символ '>' или статус не найдены")
 
     @retry_api
     async def send_command(self, idx):
@@ -115,7 +114,12 @@ class RelaySwitch(CoordinatorEntity, SwitchEntity):
         self._channel = channel
         self._attr_name = f"{prefix.replace('_', ' ').capitalize()} {channel}"
         self._attr_unique_id = f"relay_{prefix}_{channel}"
-        self._attr_device_info = {"identifiers": {(DOMAIN, self.coordinator.host)}, "name": f"Relay Controller ({self.coordinator.host})", "manufacturer": "KrolikROJER", "model": "HTTP Relay Module"}
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, self.coordinator.host)},
+            "name": f"Relay Controller ({self.coordinator.host})",
+            "manufacturer": "KrolikROJER",
+            "model": "HTTP Relay Module"
+        }
 
     @property
     def is_on(self):
