@@ -1,0 +1,13 @@
+turn_all_on:
+  description: "Включить все"
+  target:
+    entity:
+      integration: http_relay_16
+      domain: switch
+
+turn_all_off:
+  description: "Выключить все"
+  target:
+    entity:
+      integration: http_relay_16
+      domain: switch
