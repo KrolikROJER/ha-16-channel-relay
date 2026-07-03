@@ -1,136 +1,84 @@
 import aiohttp
-import logging
-import re
-import asyncio
-from datetime import datetime, timedelta
-
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-from homeassistant.helpers import entity_registry as er
-from .const import DOMAIN, CONF_RELAY_COUNT, CONF_PORT, CONF_PREFIX, CONF_SCAN_INTERVAL
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN
 
-def retry_api(func):
-    async def wrapper(self, *args, **kwargs):
-        delays = [0.5, 1.0, 3.0]
-        last_ex = None
-        
-        if func.__name__ == "send_command":
-            idx = args[0] if args else 0
-            ch_num = (idx // 2) + 1 if idx % 2 == 0 else (idx + 1) // 2
-            context = f"для канала {ch_num}"
-            target_url = f"http://{self.host}/{self.port}/{str(idx).zfill(2)}"
-        else:
-            context = "запроса статуса"
-            target_url = f"http://{self.host}/{self.port}/99"
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
+    config = hass.data[DOMAIN][entry.entry_id]
+    coordinator = config["coordinator"]
+    entities = []
 
-        for i, delay in enumerate(delays):
-            try:
-                result = await func(self, *args, **kwargs)
-                self.healthcheck = "OK"
-                self.last_success = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-                return result
-            except Exception as e:
-                last_ex = e
-                if i == len(delays) - 1:
-                    self.healthcheck = "Error"
-                    self.last_error = f"Ошибка выполнения ({target_url}) {context}: {str(e)}"
-                    self.last_error_time = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-                    _LOGGER.error(self.last_error)
-                else:
-                    await asyncio.sleep(delay)
-        return None
-    return wrapper
+    # 1. Поканальные реле
+    for i in range(config["relays_count"]):
+        entities.append(Esp32S3RelaySwitch(coordinator, config, i, entry.entry_id))
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    count = config_entry.data.get(CONF_RELAY_COUNT, 16)
-    raw_prefix = config_entry.data.get(CONF_PREFIX, "").strip()
-    prefix = raw_prefix if raw_prefix else config_entry.data.get(CONF_NAME, "relay").replace(" ", "_").lower()
+    # 2. Кнопки группового управления
+    if config["relays_count"] > 0:
+        entities.append(Esp32S3MassActionSwitch(config, "all-on", "Включить все реле", entry.entry_id))
+        entities.append(Esp32S3MassActionSwitch(config, "all-off", "Выключить все реле", entry.entry_id))
 
-    entities = [RelaySwitch(coordinator, i, prefix) for i in range(1, count + 1)]
     async_add_entities(entities)
 
-    if not hass.services.has_service(DOMAIN, "turn_all_on"):
-        async def handle_mass_control(call):
-            registry = er.async_get(hass)
-            target_entities = call.data.get("entity_id", [])
-            entry_ids = {registry.async_get(eid).config_entry_id for eid in target_entities if registry.async_get(eid)}
-            for e_id in entry_ids:
-                if coord := hass.data.get(DOMAIN, {}).get(e_id):
-                    await coord.turn_all(call.service == "turn_all_on")
-
-        hass.services.async_register(DOMAIN, "turn_all_on", handle_mass_control)
-        hass.services.async_register(DOMAIN, "turn_all_off", handle_mass_control)
-
-class RelayCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass, host, port, count, scan_interval):
-        super().__init__(
-            hass, _LOGGER, name=f"{DOMAIN}_{host}",
-            update_interval=timedelta(seconds=scan_interval),
-        )
-        self.host, self.port, self.count = host, port, count
-        self.healthcheck, self.last_success, self.last_error, self.last_error_time = "Unknown", "Never", "None", "Never"
-
-    @retry_api
-    async def _async_update_data(self):
-        url = f"http://{self.host}/{self.port}/99"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=5) as response:
-                response.raise_for_status()
-                html = await response.text()
-                clean_html = html.replace('\n', '').replace('\r', '').strip()
-                
-                match = re.search(r'>([01]{' + str(self.count) + r',})', clean_html)
-                if not match:
-                    match = re.search(r'>([01]+)', clean_html)
-                if match:
-                    return match.group(1)[:self.count]
-                raise Exception("Символ '>' или статус не найдены")
-
-    @retry_api
-    async def send_command(self, idx):
-        url = f"http://{self.host}/{self.port}/{str(idx).zfill(2)}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=5) as response:
-                response.raise_for_status()
-                return True
-
-    async def turn_all(self, state: bool):
-        if not self.data: return
-        target = "1" if state else "0"
-        for i in range(1, self.count + 1):
-            if self.data[i-1] != target:
-                idx = (i * 2) - 1 if state else (i - 1) * 2
-                await self.send_command(idx)
-                await asyncio.sleep(0.2)
-        await self.async_request_refresh()
-
-class RelaySwitch(CoordinatorEntity, SwitchEntity):
-    def __init__(self, coordinator, channel, prefix):
+class Esp32S3RelaySwitch(CoordinatorEntity, SwitchEntity):
+    """Поканальный выключатель реле."""
+    def __init__(self, coordinator, config, index, entry_id):
         super().__init__(coordinator)
-        self._channel = channel
-        self._attr_name = f"{prefix.replace('_', ' ').capitalize()} {channel}"
-        self._attr_unique_id = f"relay_{prefix}_{channel}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, self.coordinator.host)},
-            "name": f"Relay Controller ({self.coordinator.host})",
-            "manufacturer": "KrolikROJER",
-            "model": "HTTP Relay Module"
-        }
+        self._config = config
+        self._index = index
+        self._attr_name = f"{config['name']} Реле {index + 1}"
+        self._attr_unique_id = f"{entry_id}_relay_{index}"
 
     @property
     def is_on(self):
-        return self.coordinator.data[self._channel - 1] == "1" if self.coordinator.data else False
+        states = self.coordinator.data.get("states", [])
+        if self._index < len(states):
+            return states[self._index]
+        return False
 
     async def async_turn_on(self, **kwargs):
-        if await self.coordinator.send_command((self._channel * 2) - 1):
-            await asyncio.sleep(0.5)
-            await self.coordinator.async_request_refresh()
+        await self._send_toggle()
 
     async def async_turn_off(self, **kwargs):
-        if await self.coordinator.send_command((self._channel - 1) * 2):
-            await asyncio.sleep(0.5)
-            await self.coordinator.async_request_refresh()
+        await self._send_toggle()
+
+    async def _send_toggle(self):
+        url = f"http://{self._config['host']}/api/relay/toggle"
+        try:
+            async with self._config["session"].post(url, data={"id": self._index}, timeout=4) as r:
+                if r.status == 200:
+                    # Опережающее обновление состояния до следующего пула координатора
+                    text = await r.text()
+                    states = self.coordinator.data.get("states", [])
+                    if self._index < len(states):
+                        states[self._index] = (text == "1")
+                    self.async_write_ha_state()
+        except Exception:
+            pass
+
+class Esp32S3MassActionSwitch(SwitchEntity):
+    """Кнопки массового действия."""
+    def __init__(self, config, action, name, entry_id):
+        self._config = config
+        self._action = action
+        self._attr_name = f"{config['name']} {name}"
+        self._attr_unique_id = f"{entry_id}_mass_{action}"
+        self._attr_icon = "mdi:flash"
+
+    @property
+    def is_on(self):
+        return False
+
+    async def async_turn_on(self, **kwargs):
+        url = f"http://{self._config['host']}/api/relay/{self._action}"
+        try:
+            await self._config["session"].post(url, timeout=4)
+        except Exception:
+            pass
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs):
+        pass

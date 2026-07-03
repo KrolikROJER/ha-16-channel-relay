@@ -1,5 +1,6 @@
 DOMAIN = "http_relay_16"
-CONF_RELAY_COUNT = "relay_count"
-CONF_SCAN_INTERVAL = "scan_interval"
-CONF_PORT = "port"
-CONF_PREFIX = "prefix"
+
+CONF_HOST = "host"
+CONF_NAME = "name"
+CONF_SENSORS_COUNT = "sensors_count"
+CONF_RELAYS_COUNT = "relays_count"
