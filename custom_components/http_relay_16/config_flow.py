@@ -17,18 +17,17 @@ class Esp32S3ControllerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
-            # Создаем запись в интеграциях
             return self.async_create_entry(
                 title=user_input[CONF_NAME], 
                 data=user_input
             )
 
-        # Схема полей ввода согласно вашим требованиям
+        # Исправленная и безопасная схема валидации полей для UI HA
         data_schema = vol.Schema({
-            vol.Required(CONF_HOST, default="kostya-svet.local"): str,
-            vol.Required(CONF_NAME, default="ESP32 Контроллер"): str,
-            vol.Required(CONF_SENSORS_COUNT, default=2): vol.All(cv.positive_int, vol.Range(min=0, max=10)),
-            vol.Required(CONF_RELAYS_COUNT, default=16): vol.All(cv.positive_int, vol.Range(min=0, max=16)),
+            vol.Required(CONF_HOST, default="kostya-svet.local"): cv.string,
+            vol.Required(CONF_NAME, default="ESP32 Контроллер"): cv.string,
+            vol.Required(CONF_SENSORS_COUNT, default=2): vol.All(vol.Coerce(int), vol.Range(min=0, max=10)),
+            vol.Required(CONF_RELAYS_COUNT, default=16): vol.All(vol.Coerce(int), vol.Range(min=0, max=16)),
         })
 
         return self.show_form(
