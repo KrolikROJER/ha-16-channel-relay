@@ -22,7 +22,7 @@ class Esp32S3ControllerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data=user_input
             )
 
-        # Исправленная и безопасная схема валидации полей для UI HA
+        # Безопасная схема валидации полей для UI Home Assistant
         data_schema = vol.Schema({
             vol.Required(CONF_HOST, default="kostya-svet.local"): cv.string,
             vol.Required(CONF_NAME, default="ESP32 Контроллер"): cv.string,
@@ -30,6 +30,6 @@ class Esp32S3ControllerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_RELAYS_COUNT, default=16): vol.All(vol.Coerce(int), vol.Range(min=0, max=16)),
         })
 
-        return self.show_form(
+        return self.async_show_form(
             step_id="user", data_schema=data_schema, errors=errors
         )
