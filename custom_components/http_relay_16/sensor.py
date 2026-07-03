@@ -1,32 +1,38 @@
-import logging
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import EntityCategory
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .const import DOMAIN
 
-_LOGGER = logging.getLogger(__name__)
-
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
+    config = hass.data[DOMAIN][entry.entry_id]
+    coordinator = config["coordinator"]
+    entities = []
     
-    async_add_entities([
-        RelayDiagnosticsSensor(coordinator, config_entry, "Healthcheck", "healthcheck"),
-        RelayDiagnosticsSensor(coordinator, config_entry, "Last Success", "last_success"),
-        RelayDiagnosticsSensor(coordinator, config_entry, "Last Error", "last_error")
-    ])
+    for i in range(config["sensors_count"]):
+        entities.append(Esp32S3TempSensor(coordinator, config, i, entry.entry_id))
+        
+    async_add_entities(entities)
 
-class RelayDiagnosticsSensor(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator, config_entry, name_suffix, field_name):
+class Esp32S3TempSensor(CoordinatorEntity, SensorEntity):
+    """Сущность термометра."""
+    def __init__(self, coordinator, config, index, entry_id):
         super().__init__(coordinator)
-        self._field = field_name
-        self._attr_name = f"Relay {name_suffix}"
-        self._attr_unique_id = f"{config_entry.entry_id}_{field_name}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.host)},
-        }
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._config = config
+        self._index = index
+        self._attr_name = f"{config['name']} Температура {index + 1}"
+        self._attr_unique_id = f"{entry_id}_temp_{index}"
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "°C"
 
     @property
     def native_value(self):
-        val = getattr(self.coordinator, self._field, "Unknown")
-        return val if val is not None else "Unknown"
+        """Берем данные из кеша координатора."""
+        temps = self.coordinator.data.get("temps", [])
+        if self._index < len(temps):
+            val = temps[self._index]
+            return float(val) if val is not None else None
+        return None

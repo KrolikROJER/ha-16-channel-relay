@@ -1,46 +1,77 @@
 import logging
 import asyncio
-from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_HOST, 
-    CONF_PORT, 
-    CONF_SCAN_INTERVAL, 
-    CONF_NAME
-)
+from datetime import timedelta
+import async_timeout
+import aiohttp
 
-from .const import DOMAIN, CONF_RELAY_COUNT
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .const import DOMAIN, CONF_HOST, CONF_SENSORS_COUNT, CONF_RELAYS_COUNT
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORMS: list[str] = ["switch", "sensor"]
+PLATFORMS = ["sensor", "switch"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    from .switch import RelayCoordinator 
+    """Инициализация координатора и платформ."""
+    host = entry.data[CONF_HOST]
+    sensors_count = entry.data[CONF_SENSORS_COUNT]
+    relays_count = entry.data[CONF_RELAYS_COUNT]
+    
+    session = aiohttp.ClientSession()
 
-    host = entry.options.get(CONF_HOST, entry.data.get(CONF_HOST))
-    port = entry.options.get(CONF_PORT, entry.data.get(CONF_PORT))
-    scan_interval = entry.options.get(CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, 30))
-    count = entry.data.get(CONF_RELAY_COUNT, 16)
+    async def async_get_data():
+        """Единый фоновый запрос данных с ESP32-S3."""
+        data = {"temps": [], "states": []}
+        try:
+            async with async_timeout.timeout(4):
+                # 1. Тянем температуры
+                if sensors_count > 0:
+                    async with session.get(f"http://{host}/api/temperature") as r:
+                        if r.status == 200:
+                            json_data = await r.json()
+                            data["temps"] = json_data.get("temps", [])
 
-    coordinator = RelayCoordinator(hass, host, port, count, scan_interval)
+                # 2. Тянем состояния реле
+                if relays_count > 0:
+                    async with session.get(f"http://{host}/api/relay/states") as r:
+                        if r.status == 200:
+                            json_data = await r.json()
+                            data["states"] = json_data.get("states", [])
+                            
+            return data
+        except Exception as err:
+            raise UpdateFailed(f"Ошибка связи с ESP32-S3: {err}")
+
+    # Создаем Координатор обновлений (сканирование раз в 5 секунд)
+    coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"esp32_coordinator_{entry.entry_id}",
+        update_method=async_get_data,
+        update_interval=timedelta(seconds=5),
+    )
+
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-
-    entry.async_on_unload(entry.add_update_listener(update_listener))
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
+        "coordinator": coordinator,
+        "session": session,
+        "host": host,
+        "name": entry.data["name"],
+        "sensors_count": sensors_count,
+        "relays_count": relays_count
+    }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
     return True
 
-async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
-
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Выгрузка интеграции."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        if DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]:
-            hass.data[DOMAIN].pop(entry.entry_id)
-            
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        await data["session"].close()
     return unload_ok
